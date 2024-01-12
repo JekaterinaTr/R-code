@@ -1,0 +1,343 @@
+#Maladia infections and deaths project
+#Data sources:
+# - Malaria cases, deaths, detection,treatment :World Heath Organization 
+# - GDP per country in 2021: International monetary fund 
+# - Population in 2021: Worldometer
+
+#libraries
+library(tidyverse)
+library(rlang)
+library(janitor)
+library(cowplot)
+library (ggbreak)
+
+
+#----------------------------------------------------------------------------
+#DATA IMPORT AND CLEANING
+
+#Table containing paths and names of all 15 csv files in the directory
+
+filenames <- list.files("D:/Data Analyst/Projects/Malary project R/Data", pattern="*.csv", full.names=TRUE) %>% 
+  as_tibble %>%
+  mutate("path" = value) %>% 
+  separate(col = value, into = c("name1", "name2"), sep = "Data/") %>% 
+  select(path, name = name2) %>% 
+  mutate(name = str_remove(name, pattern = ".csv"))
+  
+#Function to import a csv file and to clean it up simultaneously:
+# ~ change first row to header, 
+#~ parse columns to numeric except the first column (country name)
+# ~ replace all NA values with 0
+
+Extract_function <- function(y){
+  
+   read_csv(file = y) %>% 
+     as_tibble() %>% 
+     janitor::row_to_names(.,1) %>% 
+    mutate(across(.cols = c(2:ncol(.)),
+                  ~str_replace_all(string = ., "\\s", ""))) %>% 
+     mutate(across(.cols = c(2:ncol(.)),
+                   as.numeric)) %>% 
+     rename("Country" = "Countries, territories and areas") %>% 
+    mutate(across(everything(),
+                  ~ replace_na(.x, 0) ))
+
+}
+
+#Execute function to import cleaned up files
+
+ConfirmedNumberCases <- Extract_function(y = paste0("", filenames$path[1], ""))
+
+
+#additional clean up for the malaria Death file due to presence of the square brackets
+
+
+EstimatedDeath <-read_csv(file = "D:/Data Analyst/Projects/Malary project R/Data/EstimatedDeath.csv") %>% 
+  as_tibble() %>% 
+  janitor::row_to_names(.,1) %>% 
+  rename("Country" = "Countries, territories and areas") %>% 
+  select(Country, "2021")
+
+EstimatedDeathCleaned <- EstimatedDeath %>% 
+  rename("Deaths" = '2021')
+
+EstimatedDeathCleaned <- EstimatedDeathCleaned %>% 
+mutate(Deaths = str_replace (Deaths, "\\[.*\\]", "")) %>% 
+  mutate(Deaths = str_trim(Deaths, side = "both")) %>% 
+  mutate(Deaths = str_replace_all(Deaths, "\\s", "")) %>% 
+  mutate(Deaths = as.numeric(Deaths)) %>% 
+  mutate(Deaths = replace_na(Deaths, 0) )
+
+
+
+#-----------------------------------------------------------------------------
+#DATA ANALYSIS AND VISUALIZATION
+
+#Part 1: In which countries malaria is detected? How many infection cases between 2000 to 2021?
+
+#Malaria infection cases worldwide:
+
+#Show the world map with countries that have confirmed malaria cases in 2021 
+
+map1 <- ConfirmedNumberCases  %>%
+    right_join(x = .,
+            y = map_data ("world2", wrap=c(-25,335), ylim=c(-35,65)),
+            by = c("Country" = "region")) %>% 
+  select(Country, value = "2021", long, lat, group) %>% 
+  mutate(value = replace_na(value, 0))
+
+map2 <- map1 %>% 
+    ggplot(aes(x = long, y = lat, group = group))  +       
+  geom_polygon(aes(fill = value), color = "black") +
+    xlab("")+
+  ylab("")+
+  ggtitle("Confirmed malaria cases in 2021") +
+  scale_fill_gradient(low = "white", high = "#D1035F")+
+  theme_bw() +
+  theme(axis.ticks = element_blank (), 
+        axis.text = element_blank(),
+        panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(),
+        title = element_text(size = 30)) 
+
+
+ggsave(filename = "C:/Users/katja/Downloads/malaria_cases.png",
+       plot = map2,
+       width = 30, height = 20, units = "cm", dpi = 600)
+
+#Malaria cases between 2000 and 2021 (only countries with non-zero malaria cases selected)
+#~split countries into 6 groups for better visibility and make separate plot for each group
+
+
+df <- ConfirmedNumberCases  %>%
+  filter(if_any (.cols = c(2:ncol(.)),
+                .fns  = ~ . != 0)) 
+p1 <- df %>% 
+  slice(1:7) %>% 
+  pivot_longer(cols= c(2:ncol(.)),
+               names_to = "year",
+               values_to = "NrCases") %>% 
+  arrange(Country, year) %>% 
+  ggplot(aes(x = year,
+             y = NrCases,
+             group = Country,
+             color = Country) )+
+  geom_line() +
+  geom_point(show.legend = F) +
+  scale_color_viridis_d(option = "turbo") +
+  scale_x_discrete(breaks = c("2000", "2004", "2008", "2012", "2016", "2021")) +
+  xlab("Year") +
+  ylab("Number of confirmed cases") +
+  ggtitle("Malaria infection cases from 2000 to 2021") +
+    theme_minimal()
+
+p2 <- df %>% 
+  slice(8:14) %>% 
+  pivot_longer(cols= c(2:ncol(.)),
+               names_to = "year",
+               values_to = "NrCases") %>% 
+  arrange(Country, year) %>% 
+  ggplot(aes(x = year,
+             y = NrCases,
+             group = Country,
+             color = Country) )+
+  geom_line() +
+  geom_point(show.legend = F) +
+  scale_color_viridis_d(option = "turbo") +
+  scale_x_discrete(breaks = c("2000", "2004", "2008", "2012", "2016", "2021")) +
+  xlab("Year") +
+  ylab("Number of confirmed cases") +
+  ggtitle("Malaria infection cases from 2000 to 2021") +
+  theme_minimal()
+
+
+p3 <- df %>% 
+  slice(15:21) %>% 
+  pivot_longer(cols= c(2:ncol(.)),
+               names_to = "year",
+               values_to = "NrCases") %>% 
+  arrange(Country, year) %>% 
+  ggplot(aes(x = year,
+             y = NrCases,
+             group = Country,
+             color = Country) )+
+  geom_line() +
+  geom_point(show.legend = F) +
+  scale_color_viridis_d(option = "turbo") +
+  scale_x_discrete(breaks = c("2000", "2004", "2008", "2012", "2016", "2021")) +
+  xlab("Year") +
+  ylab("Number of confirmed cases") +
+  ggtitle("Malaria infection cases from 2000 to 2021") +
+  theme_minimal()
+
+
+p4 <- df %>% 
+  slice(22:29) %>% 
+  pivot_longer(cols= c(2:ncol(.)),
+               names_to = "year",
+               values_to = "NrCases") %>% 
+  arrange(Country, year) %>% 
+  ggplot(aes(x = year,
+             y = NrCases,
+             group = Country,
+             color = Country) )+
+  geom_line() +
+  geom_point(show.legend = F) +
+  scale_color_viridis_d(option = "turbo") +
+  scale_x_discrete(breaks = c("2000", "2004", "2008", "2012", "2016", "2021")) +
+  xlab("Year") +
+  ylab("Number of confirmed cases") +
+  ggtitle("Malaria infection cases from 2000 to 2021") +
+  theme_minimal()
+
+
+p5 <- df %>% 
+  slice(30:37) %>% 
+  pivot_longer(cols= c(2:ncol(.)),
+               names_to = "year",
+               values_to = "NrCases") %>% 
+  arrange(Country, year) %>% 
+  ggplot(aes(x = year,
+             y = NrCases,
+             group = Country,
+             color = Country) )+
+  geom_line() +
+  geom_point(show.legend = F) +
+  scale_color_viridis_d(option = "turbo") +
+  scale_x_discrete(breaks = c("2000", "2004", "2008", "2012", "2016", "2021")) +
+  xlab("Year") +
+  ylab("Number of confirmed cases") +
+  ggtitle("Malaria infection cases from 2000 to 2021") +
+  theme_minimal()
+
+
+p6 <- df %>% 
+  slice(38:45) %>% 
+  pivot_longer(cols= c(2:ncol(.)),
+               names_to = "year",
+               values_to = "NrCases") %>% 
+  arrange(Country, year) %>% 
+  ggplot(aes(x = year,
+             y = NrCases,
+             group = Country,
+             color = Country) )+
+  geom_line() +
+  geom_point(show.legend = F) +
+  scale_color_viridis_d(option = "turbo") +
+  scale_x_discrete(breaks = c("2000", "2004", "2008", "2012", "2016", "2021")) +
+  xlab("Year") +
+  ylab("Number of confirmed cases") +
+  ggtitle("Malaria infection cases from 2000 to 2021") +
+  theme_minimal()
+
+plot2 <- plot_grid(p1, p2,p3, p4, p5, p6, ncol = 2)
+
+ggsave(filename = paste0("C:/Users/katja/Downloads/confirmed_cases_death_percentage_map.png"),
+       plot = plot2,
+       width = 30, height = 20, units = "cm", dpi = 600)
+
+#Part 2: Mortality rate: top 10 countries with highest percentage of malaria death among contaminated
+
+#Join the table with malaria confirmed cases and the table with malaria death into a single table
+
+ConfirmedNumber2021 <- ConfirmedNumberCases %>% 
+  select(Country, "2021") %>% 
+  rename("Cases" = '2021')
+
+CasesAndDeath2021 <- ConfirmedNumber2021 %>% 
+  inner_join(x = .,
+             y = EstimatedDeathCleaned,
+             by = "Country")
+
+#Calculate percentage of death from contaminated cases
+
+CasesAndDeath2021 <- CasesAndDeath2021 %>% 
+  mutate("PercentDeath" = (Deaths / Cases)*100) %>% 
+  mutate(PercentDeath = replace_na(PercentDeath, 0)) %>% 
+  arrange(desc(PercentDeath)) %>% 
+  filter(PercentDeath != "Inf")
+
+# Select top 10 countries with highest mortality percentage
+
+Top10Deaths <- CasesAndDeath2021 %>% 
+  slice(1:10)
+
+ plot3 <- Top10Deaths %>% 
+   arrange(desc(PercentDeath)) %>% 
+   ggplot(aes(y = PercentDeath,
+             x = fct_reorder(Country, PercentDeath, .desc=TRUE))) +
+  geom_col(color = "black", fill = "#D1035F") +
+  xlab("") +
+  ylab("Percentage of death among confirmed cases") +
+  ggtitle("Top 10 countries with highest malaria mortality") +
+  theme_minimal() +
+  theme(axis.ticks = element_blank (), 
+        panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(),
+        axis.text.x = element_text(color = "black"),
+        title = element_text(size = 25),
+        axis.text = element_text(size = 18))
+ 
+ 
+ ggsave(filename = paste0("C:/Users/katja/Downloads/death_percentage.png"),
+        plot = plot3,
+        width = 30, height = 20, units = "cm", dpi = 600)
+
+
+#Part 3:do state wealth or state population have affect on total percentage of death?
+
+#add country population to the top 10 malaria mortality countries list
+
+ Population <-read_csv(file = "D:/Data Analyst/Projects/Malary project R/Data/countries_by_population_2021.csv") %>% 
+   as_tibble() %>% 
+   rename("Country" = "Country (or dependency)", "Population" = "Population (2020)") %>% 
+   select(Country, Population)
+ 
+
+ Top10DeathsPopulation <- Top10Deaths %>% 
+   left_join(x = .,
+               y = Population,
+               by = "Country")
+ 
+ #add country GDP to the top 10 malaria mortality countries list
+ 
+ GDP <-read_csv(file = "D:/Data Analyst/Projects/Malary project R/Data/GDP.csv") %>% 
+   as_tibble() %>% 
+   rename("Country" = "Country Name", "GDP_value" = "2021 [YR2021]") %>% 
+   select(Country, GDP_value) %>% 
+   mutate(GDP_value_numeric = as.numeric(GDP_value)) %>% 
+   select(Country, GDP_value_numeric)
+   
+ 
+
+ Top10DeathsPopulationGDP <- Top10DeathsPopulation %>% 
+   left_join(x = .,
+              y = GDP,
+              by = "Country") 
+
+ 
+ plot4 <- Top10DeathsPopulationGDP %>% 
+      ggplot(aes(x = GDP_value_numeric,
+              y = PercentDeath, 
+              size = Population,
+              color = Country)) +
+   geom_point(alpha = 0.75,
+              show.legend = TRUE) +
+   scale_size_continuous(range = c(4,10)) +
+   ylim(0, 21) +
+      xlab("Country GDP") +
+   ylab("Percentage of death among confirmed cases") +
+   ggtitle("Malaria mortality rate vs. GDP and Population") +
+   theme_bw() +
+   scale_y_break(c(7, 18), scales="fixed") +
+   theme(axis.ticks = element_blank (), 
+         panel.grid.major = element_blank(),
+         panel.grid.minor = element_blank(),
+         axis.text.x = element_text(color = "black"),
+         title = element_text(size = 25),
+         axis.text = element_text(size = 18),
+         legend.text = element_text(size = 15))
+ 
+ ggsave(filename = paste0("C:/Users/katja/Downloads/Death_GDP_Population.png"),
+        plot = plot4,
+        width = 30, height = 20, units = "cm", dpi = 600)
