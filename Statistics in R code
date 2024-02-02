@@ -1,0 +1,209 @@
+#Statistical test examples in R
+
+library (tidyverse)
+library(ggpubr)    #publication ready graphs
+library(rstatix)   #statistics 
+library(moments)  #skewness and kurtosis
+library(gridExtra)
+
+#One-sample t-test: compare the mean of one sample to a known mean
+#Example: Tomato Daily Prices Dataset from Kaggle (https://www.kaggle.com/datasets/ramkrijal/tomato-daily-prices
+
+df <- read_csv(file = "D:/Data Analyst/Projects/Statistics in R/Tomato.csv")
+
+df <- df %>% 
+  mutate("ID" = row_number())
+
+
+#Does our dataset has extreme outliers? If present, remove them
+
+out_df <- df %>% identify_outliers(Average)
+
+df2 <- df %>% 
+  anti_join(out_df, by = "ID")
+
+df2 %>% identify_outliers(Average)
+
+#Is our dataset normally distributed? QQ plot to draws the correlation between a given data and the normal distribution.
+df2 %>% shapiro_test(Average)
+
+qqplot <- ggqqplot(df2, x = "Average", font.x = c(30, "plain", "black"), font.y = c(30, "plain", "black"))
+
+ggsave(filename = paste0("C:/Users/katja/Downloads/Tomato prices QQ plot.png"),
+       plot = qqplot,
+       width = 30, height = 20, units = "cm", dpi = 600)
+
+#Get summary statistics on tomato prices
+
+df2 %>% get_summary_stats(Average, type = "full")
+
+#QUESTION: we have measured an average price of$85 this month; does it differs significantly from our previous measures in the datasets?
+#perform a t-test
+
+stat.test <- df2 %>% t_test(Average ~ 1, mu = 85, detailed = TRUE)
+
+ggsave(filename = paste0("C:/Users/katja/Downloads/Tomato stats.png"),
+       plot = stat.test,
+       width = 30, height = 20, units = "cm", dpi = 600)
+
+png("C:/Users/katja/Downloads/Stats.png", height = 50*nrow(stat.test), width = 200*ncol(stat.test))
+grid.table(stat.test)
+dev.off()
+
+
+df_bxp <- ggboxplot(
+  df2$Average, width = 0.6, add = c("mean", "jitter"), 
+  ylab = "Average price of tomato in $", xlab = FALSE
+)
+
+df_bxp + labs(
+  subtitle = get_test_label(stat.test, detailed = TRUE)
+)
+
+plot1 <- ggdensity(df2, x = "Average", rug = TRUE, fill = "lightgray", xlab = "average price of tomato in $") +
+  scale_x_continuous(limits = c(0, 90)) +
+  stat_central_tendency(type = "mean", color = "red", linetype = "dashed") +
+  geom_vline(xintercept = 85, color = "blue", linetype = "dashed") + 
+  labs(subtitle = get_test_label(stat.test,  detailed = TRUE)) +
+  theme(title = element_text(size = 30),
+        axis.text = element_text(size = 30),
+        legend.text = element_text(size = 30))
+  
+ggsave(filename = paste0("C:/Users/katja/Downloads/Tomato prices T-Test.png"),
+       plot = plot1,
+       width = 30, height = 20, units = "cm", dpi = 600)
+------------------------------------------------------------
+#Independent samples t-test:o compare the mean of two independent groups
+#Example: Comparing income for various job titles by gender (https://www.kaggle.com/datasets/nilimajauhari/glassdoor-analyze-gender-pay-gap)
+  
+df3 <- read_csv(file = "D:/Data Analyst/Projects/Statistics in R/Glassdoor Gender Pay Gap.csv")
+  
+#get summary syatistics
+
+stats_gender <- df3 %>%
+  group_by(Gender) %>%
+  get_summary_stats(BasePay, type = "full")
+
+
+# Does our dataset has extreme outliers? No extreme outliers detected
+df3 %>% 
+  group_by(Gender) %>% 
+      identify_outliers(BasePay)
+
+#Is our dataset normally distributed? QQ plot to draws the correlation between a given data and the normal distribution.
+
+df3 %>%
+  group_by(Gender) %>%
+  shapiro_test(BasePay)
+
+QQplotGender <- ggqqplot(df3, x = "BasePay", facet.by = "Gender", font.x = c(30, "plain", "black"), font.y = c(30, "plain", "black"))
+
+
+ggsave(filename = paste0("C:/Users/katja/Downloads/Gender pay QQ plot.png"),
+       plot = QQplotGender,
+       width = 30, height = 20, units = "cm", dpi = 600)
+
+#Check the equality of variances using the Levene's test: the variances of groups are equal (p-value > 0.05) so use Student t-test
+df3 %>% levene_test(BasePay ~ Gender)  
+
+#Computing t-test
+
+stat.test2 <- df3 %>% 
+  t_test(BasePay ~ Gender, detailed = TRUE) %>%
+  add_significance()
+
+ggsave(filename = paste0("C:/Users/katja/Downloads/Tomato stats.png"),
+       plot = stat.test2,
+       width = 30, height = 20, units = "cm", dpi = 600)
+
+png("C:/Users/katja/Downloads/StatsGender.png", height = 50*nrow(stat.test2), width = 200*ncol(stat.test2))
+grid.table(stat.test2)
+dev.off()
+
+
+#Cohen's d for Student t-test
+df3 %>%  cohens_d(BasePay ~ Gender, var.equal = TRUE)
+
+
+
+plot2 <- ggplot(df3, aes(x = Gender, y = BasePay, colour = Gender)) + 
+  geom_boxplot(outlier.shape = NA) +
+  geom_jitter() +
+  scale_color_manual(values=c("#E69F00", "#7A2985")) +
+  theme_classic() +
+  xlab("") +
+  ylab("Salary by gender")+
+  theme(title = element_text(size = 30),
+        axis.text = element_text(size = 30),
+        legend.text = element_text(size = 30))
+
+plot3 <- plot2 + labs(
+  subtitle = get_test_label(stat.test2, detailed = TRUE)
+)
+
+
+
+ggsave(filename = paste0("C:/Users/katja/Downloads/Salary by Gender t-test.png"),
+       plot = plot3,
+       width = 30, height = 20, units = "cm", dpi = 600)
+
+------------------------------------------------------
+#Biological data representation as a heatmap:
+#p-value distribution of gene expression after Mann-Whitney U test
+  
+
+heatmap1=read.delim2("heatmap6.csv", sep=',', dec='.')
+
+#Reformat your dataframe into a matrix
+heatmap1.mat=as.matrix(heatmap1[2:ncol(heatmap1)])
+rownames(heatmap1.mat)=heatmap1$X
+
+#Heatmap
+opar=par(mar=c(4.1, 4.1, 4.1, 4.1)) #bottom, left, top, and right
+par(mar=c(2, 2, 2, 2))
+
+#Set up the palette 
+my_palette <- colorRampPalette(c("#DDEAFB","#84ABDE", "#1F4B83"))(n = 299)
+col_breaks = c(seq(0,0.099,length=100),
+               seq(0.1,0.5,length=100), 
+               seq(0.501,1,length=100)) 
+
+png("heatmap_test.png",    # create PNG for the heat map        
+    width = 5*600,   
+    height = 8*600,
+    res = 600,        
+    pointsize = 10)
+
+(heatmap.2(heatmap1.mat,
+           notecol="black",      # change font color of cell labels to black
+           trace="none",         # turns off trace lines inside the heat map
+           colsep = seq(0, 5),
+           rowsep = seq(0, 11),
+           sepcolor = 'black',
+           sepwidth = c(0.01, 0.01),
+           margins=c(10,8),     # widens margins around plot
+           col=my_palette,       # use on color palette defined earlier
+           breaks=col_breaks,    # enable color transition at specified limits
+           Colv=FALSE,            # turn off column clustering
+           Rowv = FALSE,           #turn off row clustering
+           cexRow = 1.5,
+           lhei=c(1,5.5),        
+           key=TRUE,
+           keysize=2.5,
+           key.title="Color key",
+           key.xlab="p-value: Mann-Whitney U test",
+           density.info="none",
+           denscol="black"))
+
+dev.off()
+par(opar)
+
+
+
+
+  
+
+  
+
+
+
